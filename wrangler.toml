@@ -3,7 +3,7 @@ main = "src/worker.ts"
 compatibility_date = "2026-06-05"
 
 [observability]
-enabled = true
+enabled = false
 head_sampling_rate = 1
 
 [observability.logs]
