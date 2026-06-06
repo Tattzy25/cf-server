@@ -1,61 +1,59 @@
 export default {
-  async fetch(request: any, env: any, ctx: any) {
-    // Handle CORS Preflight requests
+  async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
       return new Response(null, {
+        status: 204,
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Accept",
-          "Access-Control-Max-Age": "86400",
-        },
+          "Access-Control-Allow-Headers": "*"
+        }
       });
     }
 
-    // Only allow POST requests for the generator pipeline
-    if (request.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
-        status: 405,
-        headers: {
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
-    }
-
+    let body = {};
     try {
-      // Forward payload directly to your live Dify MCP server endpoint
-      const res = await fetch(
-        "https://api.dify.ai/mcp/server/vIKsLS3ToLV1yeUx/mcp",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json, text/event-stream",
-          },
-          body: request.body,
-        },
-      );
-
-      // Stream the response back directly to your Shopify store front-end
-      return new Response(res.body, {
-        status: res.status,
-        headers: {
-          "Content-Type": res.headers.get("Content-Type") || "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
-    } catch (err: any) {
-      return new Response(
-        JSON.stringify({ error: err.message || "Internal Server Error" }),
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-          },
-        },
-      );
+      body = await request.json();
+    } catch {
+      // skip
     }
-  },
+
+    const args = {};
+    if (body.prompt) args.prompt = body.prompt;
+    if (body.numOutputs) args.numOutputs = body.numOutputs;
+    if (body.customer_id) args.customerId = body.customer_id;
+    if (body.version) args.version = body.version;
+    if (body.artist_uploads && body.artist_uploads.length) args.uploadedImage = body.artist_uploads;
+    args.timestamp = new Date().toISOString();
+
+    const difyPayload = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "trash",
+        arguments: args
+      }
+    };
+
+    const res = await fetch("https://api.dify.ai/mcp/server/vIKsLS3ToLV1yeUx/mcp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream"
+      },
+      body: JSON.stringify(difyPayload)
+    });
+
+    const data = await res.json();
+    const parsed = JSON.parse(data.body);
+
+    return new Response(JSON.stringify(parsed), {
+      status: data.status_code || res.status,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
+  }
 };
