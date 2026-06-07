@@ -1,7 +1,7 @@
 interface Env {
   DIFY_MCP_URL?: string;
   DIFY_TOOL_NAME?: string;
-  UPLOADS_BASE_URL?: string; // optional override
+  UPLOADS_BASE_URL?: string;
 }
 
 interface FrontendBody {
@@ -57,7 +57,6 @@ function toAbsoluteImageUrl(input: string, base: string): string {
 }
 
 function normalizeUrls(payload: any, base: string) {
-  // expected final shape includes urls, but this safely handles common alternates
   const source = Array.isArray(payload?.urls)
     ? payload.urls
     : Array.isArray(payload?.output)
@@ -171,7 +170,7 @@ export default {
         );
       }
 
-      const outer = JSON.parse(text) as { body?: string; [k: string]: unknown };
+      const outer = JSON.parse(text) as { body?: string };
       if (!outer?.body || typeof outer.body !== "string") {
         return jsonResponse(
           { error: "Missing nested body JSON string" },
@@ -180,10 +179,19 @@ export default {
         );
       }
 
-      const inner = JSON.parse(outer.body);
+      let inner: any;
+      try {
+        inner = JSON.parse(outer.body);
+      } catch {
+        const sanitizedBody = outer.body
+          .replace(/\r/g, "\\r")
+          .replace(/\n/g, "\\n")
+          .replace(/\t/g, "\\t");
+        inner = JSON.parse(sanitizedBody);
+      }
+
       const normalized = normalizeUrls(inner, uploadsBase);
 
-      // final frontend contract
       return jsonResponse(normalized, 200, corsHeaders);
     } catch (e: any) {
       return jsonResponse(
