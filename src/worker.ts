@@ -1,6 +1,7 @@
 interface Env {
   DIFY_MCP_URL?: string;
   DIFY_TOOL_NAME?: string;
+  UPLOADS_BASE_URL?: string; // optional override
 }
 
 interface FrontendBody {
@@ -31,12 +32,13 @@ interface DifyResponse {
 
 const DEFAULT_DIFY_URL = "https://api.dify.ai/mcp/server/vIKsLS3ToLV1yeUx/mcp";
 const DEFAULT_TOOL_NAME = "trash";
+const DEFAULT_UPLOADS_BASE_URL = "https://tattty-uploads.tattty.com";
 
 function jsonResponse(
   data: unknown,
-  status = 200,
-  corsHeaders: Record<string, string> = {},
-): Response {
+  status: number,
+  corsHeaders: Record<string, string>,
+) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -44,6 +46,31 @@ function jsonResponse(
       "Content-Type": "application/json",
     },
   });
+}
+
+function toAbsoluteImageUrl(input: string, base: string): string {
+  if (!input) return input;
+  if (/^https?:\/\//i.test(input)) return input;
+  if (input.startsWith("//")) return `https:${input}`;
+  if (input.startsWith("/")) return `${base}${input}`;
+  return `${base}/${input}`;
+}
+
+function normalizeUrls(payload: any, base: string) {
+  // expected final shape includes urls, but this safely handles common alternates
+  const source = Array.isArray(payload?.urls)
+    ? payload.urls
+    : Array.isArray(payload?.output)
+      ? payload.output
+      : Array.isArray(payload?.images)
+        ? payload.images
+        : [];
+
+  const urls = source
+    .filter((u: unknown) => typeof u === "string" && u.length > 0)
+    .map((u: string) => toAbsoluteImageUrl(u, base));
+
+  return { ...payload, urls };
 }
 
 export default {
@@ -56,10 +83,7 @@ export default {
     };
 
     if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders,
-      });
+      return new Response(null, { status: 204, headers: corsHeaders });
     }
 
     if (request.method !== "POST") {
@@ -76,6 +100,9 @@ export default {
     const upstreamUrl = env.DIFY_MCP_URL || DEFAULT_DIFY_URL;
     const toolName =
       (env.DIFY_TOOL_NAME || DEFAULT_TOOL_NAME).trim() || "trash";
+    const uploadsBase = (
+      env.UPLOADS_BASE_URL || DEFAULT_UPLOADS_BASE_URL
+    ).replace(/\/+$/, "");
 
     const difyPayload = {
       jsonrpc: "2.0",
@@ -94,9 +121,9 @@ export default {
       },
     };
 
-    let upstream: Response;
+    let upstreamRes: Response;
     try {
-      upstream = await fetch(upstreamUrl, {
+      upstreamRes = await fetch(upstreamUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -104,64 +131,65 @@ export default {
         },
         body: JSON.stringify(difyPayload),
       });
-    } catch (err: any) {
+    } catch (e: any) {
       return jsonResponse(
-        { error: err?.message || "Failed to reach upstream" },
+        { error: e?.message || "Upstream fetch failed" },
         502,
         corsHeaders,
       );
     }
 
-    let difyResponse: DifyResponse;
+    let dify: DifyResponse;
     try {
-      difyResponse = (await upstream.json()) as DifyResponse;
+      dify = (await upstreamRes.json()) as DifyResponse;
     } catch {
       return jsonResponse(
-        { error: "Upstream returned non-JSON response" },
+        { error: "Upstream returned non-JSON" },
         502,
         corsHeaders,
       );
     }
 
-    // Respect upstream errors
-    if (!upstream.ok || difyResponse?.error) {
-      const msg =
-        difyResponse?.error?.message || `Upstream error (${upstream.status})`;
-      return jsonResponse({ error: msg }, upstream.status || 502, corsHeaders);
-    }
-
-    // Parse nested structure:
-    // difyResponse.result.content[0].text -> JSON string
-    // parsedOuter.body -> JSON string
-    // parsedInner -> final payload for frontend (expected to include urls)
-    try {
-      const text = difyResponse?.result?.content?.[0]?.text;
-      if (!text) {
-        return jsonResponse(
-          { error: "Missing result content from upstream" },
-          502,
-          corsHeaders,
-        );
-      }
-
-      const parsedOuter = JSON.parse(text) as { body?: string };
-      if (!parsedOuter?.body) {
-        return jsonResponse(
-          { error: "Missing nested body from upstream content" },
-          502,
-          corsHeaders,
-        );
-      }
-
-      const parsedInner = JSON.parse(parsedOuter.body);
-
-      // Return final parsed payload directly to frontend
-      return jsonResponse(parsedInner, 200, corsHeaders);
-    } catch (err: any) {
+    if (!upstreamRes.ok || dify?.error) {
       return jsonResponse(
         {
-          error: "Failed to parse upstream payload",
-          details: err?.message || "Unknown parse error",
+          error:
+            dify?.error?.message || `Upstream error (${upstreamRes.status})`,
+        },
+        upstreamRes.status || 502,
+        corsHeaders,
+      );
+    }
+
+    try {
+      const text = dify?.result?.content?.[0]?.text;
+      if (!text) {
+        return jsonResponse(
+          { error: "Missing result.content[0].text" },
+          502,
+          corsHeaders,
+        );
+      }
+
+      const outer = JSON.parse(text) as { body?: string; [k: string]: unknown };
+      if (!outer?.body || typeof outer.body !== "string") {
+        return jsonResponse(
+          { error: "Missing nested body JSON string" },
+          502,
+          corsHeaders,
+        );
+      }
+
+      const inner = JSON.parse(outer.body);
+      const normalized = normalizeUrls(inner, uploadsBase);
+
+      // final frontend contract
+      return jsonResponse(normalized, 200, corsHeaders);
+    } catch (e: any) {
+      return jsonResponse(
+        {
+          error: "Failed to parse nested upstream payload",
+          details: e?.message || "parse error",
         },
         502,
         corsHeaders,
