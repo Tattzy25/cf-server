@@ -5,21 +5,26 @@ interface Env {
 
 interface FrontendBody {
   prompt?: string;
-  numOutputs?: number;
-  customerid?: string;
+  numOutputs?: string;
+  customer_id?: string;
   version?: string;
-  artistuploads?: string | string[];
-  endpoint?: string;
-  toolName?: string;
+  artist_uploads?: string;
+  source_id?: string;
 }
 
-interface DifyWrappedResponse {
-  statuscode?: number;
-  body?: unknown;
-  [key: string]: unknown;
+interface DifyResponse {
+  jsonrpc: string;
+  id: number;
+  result?: {
+    content: Array<{
+      type: string;
+      text: string;
+    }>;
+    isError: boolean;
+  };
 }
 
-const DEFAULT_DIFY_URL = "https://api.dify.ai/mcp/server/vIKsLS3ToLV1yeUxmcp";
+const DEFAULT_DIFY_URL = "https://api.dify.ai/mcp/server/vIKsLS3ToLV1yeUx/mcp";
 const DEFAULT_TOOL_NAME = "trash";
 
 export default {
@@ -40,8 +45,8 @@ export default {
 
     const body = (await request.json()) as FrontendBody;
 
-    const upstreamUrl = body.endpoint || env.DIFY_MCP_URL || DEFAULT_DIFY_URL;
-    const toolName = body.toolName || env.DIFY_TOOL_NAME || DEFAULT_TOOL_NAME;
+    const upstreamUrl = env.DIFY_MCP_URL || DEFAULT_DIFY_URL;
+    const toolName = env.DIFY_TOOL_NAME || DEFAULT_TOOL_NAME;
 
     const difyPayload = {
       jsonrpc: "2.0",
@@ -52,10 +57,10 @@ export default {
         arguments: {
           prompt: body.prompt,
           numOutputs: body.numOutputs,
-          uploadedImage: body.artistuploads,
-          customerId: body.customerid,
+          artist_uploads: body.artist_uploads,
+          customer_id: body.customer_id,
           version: body.version,
-          timestamp: new Date().toISOString(),
+          source_id: body.source_id,
         },
       },
     };
@@ -64,55 +69,23 @@ export default {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Accept: "application/json, text/event-stream",
+        Accept: "application/json",
       },
       body: JSON.stringify(difyPayload),
     });
 
-    const raw = await upstream.text();
-    const upstreamContentType = upstream.headers.get("content-type") || "";
+    const difyResponse = (await upstream.json()) as DifyResponse;
 
-    let status = upstream.status;
-    let responseBody = raw;
-    let contentType = upstreamContentType || "text/plain; charset=utf-8";
+    // PARSE the nested JSON - your backend always returns this structure
+    const outerJson = JSON.parse(difyResponse.result!.content[0].text);
+    const innerJson = JSON.parse(outerJson.body);
 
-    if (upstreamContentType.includes("application/json")) {
-      try {
-        const outer = JSON.parse(raw) as DifyWrappedResponse;
-        status =
-          typeof outer.statuscode === "number"
-            ? outer.statuscode
-            : upstream.status;
-
-        if (typeof outer.body === "string") {
-          try {
-            responseBody = JSON.stringify(JSON.parse(outer.body));
-            contentType = "application/json; charset=utf-8";
-          } catch {
-            responseBody = outer.body;
-            contentType = "text/plain; charset=utf-8";
-          }
-        } else if (outer.body !== undefined) {
-          responseBody = JSON.stringify(outer.body);
-          contentType = "application/json; charset=utf-8";
-        } else {
-          responseBody = JSON.stringify(outer);
-          contentType = "application/json; charset=utf-8";
-        }
-      } catch {
-        responseBody = raw;
-        contentType = "text/plain; charset=utf-8";
-      }
-    } else if (upstreamContentType.includes("text/event-stream")) {
-      responseBody = raw;
-      contentType = "text/event-stream; charset=utf-8";
-    }
-
-    return new Response(responseBody, {
-      status,
+    // Return the parsed result
+    return new Response(JSON.stringify(innerJson), {
+      status: 200,
       headers: {
         ...corsHeaders,
-        "Content-Type": contentType,
+        "Content-Type": "application/json",
       },
     });
   },
