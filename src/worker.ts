@@ -14,7 +14,10 @@ export default {
 
     const res = await fetch(env.DEFAULT_DIFY_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: 1,
@@ -33,8 +36,17 @@ export default {
       }),
     });
 
-    const data = await res.json();
-    const text = data.result.content.find((c: any) => c.type === "text")?.text;
+    const rpc = await res.json();
+
+    if (rpc.error) {
+      return new Response(JSON.stringify({ error: rpc.error.message }), {
+        status: 502,
+        headers: { ...CORS, "Content-Type": "application/json" },
+      });
+    }
+
+    const textItem = rpc.result?.content?.find((c: any) => c.type === "text");
+    const text = textItem?.text;
 
     return new Response(text, {
       headers: { ...CORS, "Content-Type": "application/json" },
