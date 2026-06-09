@@ -25,11 +25,11 @@ export default {
         params: {
           name: env.DEFAULT_TOOL_NAME,
           arguments: {
-            prompt: body.prompt,
-            numOutputs: body.numOutputs,
-            artist_uploads: body.artist_uploads,
-            customer_id: body.customer_id,
-            version: body.version,
+            "prompt": "body.prompt",
+            "numOutputs": "body.numOutputs",
+            "artist_uploads": "body.artist_uploads",
+            "customer_id": "body.customer_id",
+            "version": "body.version",
             source_id: body.source_id,
           },
         },
