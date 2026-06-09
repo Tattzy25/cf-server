@@ -12,29 +12,33 @@ export default {
 
     const body = await request.json();
 
-    const res = await fetch(env.DEFAULT_DIFY_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: {
-          name: env.DEFAULT_TOOL_NAME,
-          arguments: {
-            "prompt": "body.prompt",
-            "numOutputs": "body.numOutputs",
-            "artist_uploads": "body.artist_uploads",
-            "customer_id": "body.customer_id",
-            "version": "body.version",
-            source_id: body.source_id,
-          },
+    const res = await fetch(
+      "https://api.dify.ai/mcp/server/vIKsLS3ToLV1yeUx/mcp",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
         },
-      }),
-    });
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "trash",
+            arguments: {
+              prompt: body.prompt,
+              numOutputs: body.numOutputs,
+              artist_uploads: body.artist_uploads,
+              customer_id: body.customer_id,
+              version: body.version,
+              source_id: body.source_id,
+            },
+          },
+        }),
+      },
+    );
+
 
     const rpc = await res.json();
 
