@@ -5,7 +5,7 @@ var CORS = {
 };
 
 var worker_default = {
-  async fetch(request, env) {
+    async fetch(request: Request, env: any) {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
     }
@@ -43,7 +43,7 @@ var worker_default = {
         headers: { ...CORS, "Content-Type": "application/json" }
       });
     }
-    const textItem = rpc.result?.content?.find((c) => c.type === "text");
+    const textItem = rpc.result?.content?.find((c: any) => c.type === "text")
     const text = textItem?.text;
     return new Response(text, {
       headers: { ...CORS, "Content-Type": "application/json" }
