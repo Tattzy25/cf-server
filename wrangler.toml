@@ -1,9 +1,10 @@
 name = "mcp-artist-generator"
-main = "src/worker.ts"
-compatibility_date = "2026-06-05"
+main = "src/index.js"
+compatibility_date = "2026-07-29"
+compatibility_flags = ["nodejs_compat"]
 
 [observability]
-enabled = false
+enabled = true
 head_sampling_rate = 1
 
 [observability.logs]
